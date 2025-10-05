@@ -24,6 +24,24 @@
 
         <widgets-notification-widget class="hidden md:block" />
 
+        <ui-tooltip
+          v-if="canScanLibrary"
+          :text="scanTooltip"
+          direction="bottom"
+          class="hidden sm:flex items-center mx-1"
+        >
+          <ui-icon-btn
+            icon="autorenew"
+            borderless
+            :size="8"
+            :aria-label="$strings.ButtonScanLibrary"
+            class="flex items-center justify-center text-gray-200 hover:text-gray-100"
+            :loading="scanDisabled"
+            :disabled="scanDisabled"
+            @click="scanCurrentLibrary"
+          />
+        </ui-tooltip>
+
         <nuxt-link v-if="currentLibrary" to="/config/stats" class="hover:text-gray-200 cursor-pointer w-8 h-8 hidden sm:flex items-center justify-center mx-1">
           <ui-tooltip :text="$strings.HeaderYourStats" direction="bottom" class="flex items-center">
             <span class="material-symbols text-2xl" aria-label="User Stats" role="button">&#xe01d;</span>
@@ -87,7 +105,8 @@
 export default {
   data() {
     return {
-      totalEntities: 0
+      totalEntities: 0,
+      tempIsScanningLibrary: false
     }
   },
   computed: {
@@ -157,6 +176,23 @@ export default {
     },
     isHttps() {
       return location.protocol === 'https:' || process.env.NODE_ENV === 'development'
+    },
+    canScanLibrary() {
+      return !!this.currentLibrary && this.userIsAdminOrUp
+    },
+    isScanningLibrary() {
+      if (!this.currentLibrary) return false
+      return !!this.$store.getters['tasks/getRunningLibraryScanTask'](this.currentLibrary.id)
+    },
+    scanDisabled() {
+      return this.isScanningLibrary || this.tempIsScanningLibrary
+    },
+    scanTooltip() {
+      if (!this.currentLibrary) return this.$strings.ButtonScanLibrary
+      if (this.isScanningLibrary) {
+        return this.$getString('MessageTaskScanningLibrary', [this.libraryName])
+      }
+      return this.$strings.ButtonScanLibrary
     },
     contextMenuItems() {
       if (!this.userIsAdminOrUp) return []
@@ -369,6 +405,22 @@ export default {
     },
     batchAddToCollectionClick() {
       this.$store.commit('globals/setShowBatchCollectionsModal', true)
+    },
+    scanCurrentLibrary() {
+      if (!this.currentLibrary || this.scanDisabled) return
+      this.tempIsScanningLibrary = true
+      this.$store
+        .dispatch('libraries/requestLibraryScan', { libraryId: this.currentLibrary.id })
+        .then(() => {
+          this.$toast.success(this.$strings.ToastLibraryScanStarted)
+        })
+        .catch((error) => {
+          console.error('Failed to start scan', error)
+          this.$toast.error(this.$strings.ToastLibraryScanFailedToStart)
+        })
+        .finally(() => {
+          this.tempIsScanningLibrary = false
+        })
     },
     setBookshelfTotalEntities(totalEntities) {
       this.totalEntities = totalEntities
